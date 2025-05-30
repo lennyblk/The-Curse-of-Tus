@@ -1,9 +1,12 @@
-# game.py
+# game.py - Corrections pour le système de compétences
 import pygame
 from player import Player
 from world import World
 from enemy import Enemy
 from ui import UI
+from loot import Chest
+from menu import InventoryMenu
+import time
 
 class Camera:
     def __init__(self, screen_width, screen_height):
@@ -26,9 +29,11 @@ class Game:
         self.screen = screen
         self.world = World(100, 80)
         self.player = Player(320, 320)
+        self.player.set_game_reference(self)  # Connecter le joueur au jeu
         self.camera = Camera(screen.get_width(), screen.get_height())
         self.ui = UI(screen.get_width(), screen.get_height())
-        self.projectiles = []
+        self.projectiles = []  # Projectiles des ennemis
+        self.player_projectiles = []  # Projectiles du joueur
         
         # Associer chaque ennemi à sa salle
         self.room_enemies = {
@@ -49,6 +54,34 @@ class Game:
         # Interaction avec les portes
         self.near_door = None
         self.door_interaction_distance = 80
+
+        self.chests = []
+        self.player_skills = []  
+        self.equipped_skills = []  # 4 compétences équipées max
+        self.player_weapon = None
+
+        # Positions des coffres (apparaissent après nettoyage des salles)
+        self.chest_positions = {
+            "room1": (1200, 450),
+            "room2": (1900, 350),
+            "central": (900, 1200),
+            "right": (1700, 1000),
+            "big": (2600, 900),
+            "bottom": (600, 2000),
+            "boss": (1700, 1800),
+            "secret": (2700, 1900)
+        }
+
+        self.menu = InventoryMenu(screen.get_width(), screen.get_height())
+        self.equipped_skills = [None, None, None, None]  # H, J, K, L
+        
+        # Le joueur commence sans dash (doit le looter)
+        self.player_has_dash = False
+        
+        # Messages de loot
+        self.loot_message = None
+        self.loot_message_time = 0
+        self.loot_message_duration = 3.0  # 3 secondes
     
     def create_enemies(self):
         self.enemies = []
@@ -217,7 +250,8 @@ class Game:
             self.restart_game()
             return
         
-        self.player.update(self.world, self.enemies)
+        # Update du joueur avec système amélioré
+        self.update_player()
         
         for enemy in self.enemies:
             enemy.update(self.player, self.world, self.enemies, self.projectiles)
@@ -225,18 +259,132 @@ class Game:
         self.projectiles = [proj for proj in self.projectiles 
                         if proj.update(self.player, self.world)]
         
+        # Mettre à jour les projectiles du joueur
+        self.player_projectiles = [proj for proj in self.player_projectiles 
+                                if proj.update(self.world, self.enemies)]
+        
         for projectile in self.projectiles[:]:
             if projectile.rect.colliderect(self.player.rect):
-                self.player.take_damage(10)
+                # Vérifier esquive
+                if self.check_dodge():
+                    print("Esquive réussie !")
+                    self.show_loot_message("Esquive !", (0, 255, 255))
+                else:
+                    self.player.take_damage(10)
                 self.projectiles.remove(projectile)
         
         # Vérifier interaction avec portes
         self.near_door = self.check_door_interaction()
         self.camera.follow_player(self.player, self.world)
+
+        # Vérifier si des coffres doivent apparaître
+        for room_name in self.room_enemies.keys():
+            if room_name != "spawn":
+                self.spawn_chest_if_room_cleared(room_name)
+        
+        # Vérifier interaction avec coffres
+        self.check_chest_interaction()
+    
+    def update_player(self):
+        """Met à jour le joueur avec gestion des compétences améliorée"""
+        self.player.update(self.world, self.enemies, self.player_weapon, self.player_projectiles)
+        
+        # Appliquer berserker en temps réel
+        self.apply_berserker_effect()
+        
+        # Vérifier vampirisme sur kills
+        self.check_vampire_healing()
+    
+    def apply_berserker_effect(self):
+        """Applique l'effet Berserker si HP < 50%"""
+        berserker_skill = None
+        for skill in self.equipped_skills:
+            if skill and skill.effect_type == "berserker":
+                berserker_skill = skill
+                break
+        
+        if berserker_skill and self.player.hp < self.player.max_hp * 0.5:
+            # Calculer les dégâts de base (sans berserker)
+            base_damage = 25  # Dégâts de base
+            weapon_bonus = self.player_weapon.damage_bonus if self.player_weapon else 0
+            
+            # Appliquer bonus berserker
+            berserker_damage = int((base_damage + weapon_bonus) * berserker_skill.effect_value)
+            self.player.attack_damage = base_damage + weapon_bonus + berserker_damage
+        else:
+            # Recalculer les dégâts normaux
+            base_damage = 25
+            weapon_bonus = self.player_weapon.damage_bonus if self.player_weapon else 0
+            self.player.attack_damage = base_damage + weapon_bonus
+    
+    def check_vampire_healing(self):
+        """Vérifie si des ennemis sont morts pour le vampirisme"""
+        vampire_skill = None
+        for skill in self.equipped_skills:
+            if skill and skill.effect_type == "vampire":
+                vampire_skill = skill
+                break
+        
+        if vampire_skill:
+            # Compter les ennemis morts depuis la dernière vérification
+            dead_enemies = sum(1 for enemy in self.enemies if not enemy.alive)
+            if not hasattr(self, 'last_dead_count'):
+                self.last_dead_count = 0
+            
+            if dead_enemies > self.last_dead_count:
+                kills = dead_enemies - self.last_dead_count
+                heal_amount = kills * vampire_skill.effect_value
+                old_hp = self.player.hp
+                self.player.hp = min(self.player.max_hp, self.player.hp + heal_amount)
+                
+                if self.player.hp > old_hp:
+                    self.show_loot_message(f"Vampirisme: +{self.player.hp - old_hp} HP", (255, 100, 100))
+                
+                self.last_dead_count = dead_enemies
+    
+    def check_dodge(self):
+        """Vérifie si le joueur esquive l'attaque"""
+        dodge_skill = None
+        for skill in self.equipped_skills:
+            if skill and skill.effect_type == "dodge":
+                dodge_skill = skill
+                break
+        
+        if dodge_skill:
+            import random
+            return random.random() < dodge_skill.effect_value
+        return False
+    
+    def check_critical_hit(self):
+        """Vérifie si l'attaque est critique"""
+        crit_skill = None
+        for skill in self.equipped_skills:
+            if skill and skill.effect_type == "crit":
+                crit_skill = skill
+                break
+        
+        if crit_skill:
+            import random
+            return random.random() < crit_skill.effect_value
+        return False
     
     def restart_game(self):
         self.player = Player(320, 320)
+        self.player.set_game_reference(self)  # Reconnecter après restart
         self.projectiles = []
+        self.player_projectiles = []  # Reset projectiles joueur
+        
+        # Reset des coffres
+        self.chests = []
+        
+        # Reset des compétences
+        self.equipped_skills = [None, None, None, None]
+        self.player_weapon = None
+        self.player_has_dash = False
+        
+        # Reset compteurs
+        self.last_dead_count = 0
+        self.loot_message = None
         
         # Réinitialiser toutes les salles sauf spawn
         for room_name in self.world.rooms:
@@ -253,18 +401,24 @@ class Game:
         self.screen.fill((30, 30, 30))
         self.world.draw_world(self.screen, self.camera)
         
-        # Dessiner seulement les ennemis dans les salles déverrouillées
         for enemy in self.enemies:
             if self.is_enemy_visible(enemy):
                 enemy.draw(self.screen, self.camera.x, self.camera.y)
-    
+        
         for projectile in self.projectiles:
             projectile.draw(self.screen, self.camera.x, self.camera.y)
         
+        # Dessiner projectiles du joueur
+        for projectile in self.player_projectiles:
+            projectile.draw(self.screen, self.camera.x, self.camera.y)
+        
+        for chest in self.chests:
+            chest.draw(self.screen, self.camera.x, self.camera.y)
+        
         self.player.draw(self.screen, self.camera.x, self.camera.y)
         
-        # Message d'interaction avec porte - CORRIGER ICI
-        if self.near_door:
+        # Messages de porte (seulement si pas de menu)
+        if self.near_door and not self.menu.is_open and not self.menu.showing_loot:
             if self.near_door["can_open"]:
                 message = f"Appuyez sur F pour ouvrir vers {self.near_door.get('to_room', 'salle')}"
                 color = (0, 255, 0)
@@ -276,16 +430,44 @@ class Game:
             text = font.render(message, True, color)
             text_rect = text.get_rect(center=(self.screen.get_width()//2, 100))
             
-            # Fond semi-transparent
             bg_rect = text_rect.inflate(20, 10)
             bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
             bg_surface.set_alpha(180)
             bg_surface.fill((0, 0, 0))
-            self.screen.blit(bg_surface, bg_rect)  # CHANGER screen en self.screen
-            
+            self.screen.blit(bg_surface, bg_rect)
             self.screen.blit(text, text_rect)
         
-        self.ui.draw_hud(self.screen, self.player, self.enemies)
+        # Message de loot
+        self.draw_loot_message()
+        
+        # CHANGER CETTE LIGNE :
+        self.ui.draw_hud(self.screen, self.player, self.enemies, self.player_weapon)
+        
+        # Dessiner les menus par-dessus tout
+        self.menu.draw(self.screen, self.equipped_skills)
+
+    def draw_loot_message(self):
+        """Dessine le message de loot temporaire"""
+        current_time = time.time()
+        if self.loot_message and (current_time - self.loot_message_time) < self.loot_message_duration:
+            font = pygame.font.Font(None, 48)
+            text = font.render(self.loot_message["text"], True, self.loot_message["color"])
+            text_rect = text.get_rect(center=(self.screen.get_width()//2, 200))
+            
+            # Fond semi-transparent
+            bg_rect = text_rect.inflate(40, 20)
+            bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
+            bg_surface.set_alpha(200)
+            bg_surface.fill((0, 0, 0))
+            self.screen.blit(bg_surface, bg_rect)
+            self.screen.blit(text, text_rect)
+        elif self.loot_message:
+            self.loot_message = None
+
+    def show_loot_message(self, text, color=(255, 255, 255)):
+        """Affiche un message temporaire"""
+        self.loot_message = {"text": text, "color": color}
+        self.loot_message_time = time.time()
 
     def is_enemy_visible(self, enemy):
         """Détermine si un ennemi doit être visible"""
@@ -313,17 +495,185 @@ class Game:
     def handle_key_press(self, key):
         """Gérer les pressions de touches depuis main.py"""
         
+        # Gestion du menu de loot
+        if self.menu.showing_loot:
+            result = self.menu.handle_loot_input(key, self.equipped_skills)
+            if result == "cancel":
+                return
+            elif result and result["action"] == "equip":
+                self.equip_skill(result["item"], result["slot"])
+            return
+        
+        # Inventaire
+        if key == pygame.K_i:
+            self.menu.toggle_inventory()
+            return
+        
+        # Si inventaire ouvert, pas d'autres actions
+        if self.menu.is_open:
+            return
+        
+        # Portes
         if key == pygame.K_f:
-            print(f"F pressé ! near_door = {self.near_door}")  # Debug
-            if self.near_door:
-                print(f"Can open: {self.near_door.get('can_open', 'Unknown')}")
-                if self.near_door["can_open"]:
-                    to_room = self.near_door["door"]["to"]
-                    print(f"Tentative d'ouverture vers {to_room}")
-                    self.world.unlock_room(to_room)
-                    print(f"Porte ouverte vers {to_room} !")  
-                    self.near_door = None
-                else:
-                    print(f"Porte non ouvrable: {self.near_door.get('reason', 'Raison inconnue')}")
-            else:
-                print("Aucune porte à proximité")
+            if self.near_door and self.near_door["can_open"]:
+                to_room = self.near_door["door"]["to"]
+                self.world.unlock_room(to_room)
+                self.near_door = None
+        
+        # Compétences équipées (HJKL)
+        elif key == pygame.K_h and self.equipped_skills[0]:
+            self.use_skill(self.equipped_skills[0])
+        elif key == pygame.K_j and self.equipped_skills[1]:
+            self.use_skill(self.equipped_skills[1])
+        elif key == pygame.K_k and self.equipped_skills[2]:
+            self.use_skill(self.equipped_skills[2])
+        elif key == pygame.K_l and self.equipped_skills[3]:
+            self.use_skill(self.equipped_skills[3])
+
+    def spawn_chest_if_room_cleared(self, room_name):
+        """Fait apparaître un coffre si la salle est nettoyée"""
+        if (self.check_room_cleared(room_name) and 
+            room_name in self.chest_positions and
+            not any(chest.x == self.chest_positions[room_name][0] for chest in self.chests)):
+            
+            chest_x, chest_y = self.chest_positions[room_name]
+            new_chest = Chest(chest_x, chest_y)
+            self.chests.append(new_chest)
+            print(f"Coffre apparu dans {room_name} !")
+
+    def check_chest_interaction(self):
+        """Vérifie l'interaction avec les coffres"""
+        for chest in self.chests:
+            if not chest.opened:
+                distance = ((self.player.x - chest.x)**2 + (self.player.y - chest.y)**2)**0.5
+                if distance <= 50:  
+                    keys = pygame.key.get_pressed()
+                    if keys[pygame.K_e]:  
+                        loot = chest.open(self.player)
+                        if loot:
+                            self.handle_loot(loot)
+
+    def handle_loot(self, loot):
+        """Gère le loot obtenu"""
+        if hasattr(loot, 'effect_type'):  # Compétence
+            self.menu.show_loot_selection(loot)
+        elif hasattr(loot, 'weapon_type'):  # Arme
+            self.menu.show_loot_selection(loot)
+        else:  # C'est une potion
+            self.use_potion(loot)
+            self.show_loot_message(f"{loot} utilisée !", (0, 255, 0))
+
+    # Compétences
+    
+    def equip_skill(self, skill, slot):
+        """Équipe une compétence dans un slot"""
+        if hasattr(skill, 'effect_type'):  # C'est une compétence
+            old_skill = self.equipped_skills[slot]
+            self.equipped_skills[slot] = skill
+            skill.key_binding = ['H', 'J', 'K', 'L'][slot]
+            
+            # Appliquer les effets passifs
+            self.apply_passive_effects()
+            
+            print(f"Compétence {skill.name} équipée sur {skill.key_binding}")
+            if old_skill:
+                print(f"Ancienne compétence {old_skill.name} remplacée")
+        
+        elif hasattr(skill, 'weapon_type'):  # Arme
+            self.player_weapon = skill
+            self.apply_passive_effects()  # Réappliquer tous les effets
+            print(f"Arme équipée : {skill.name}")
+        
+        else:  # Potion
+            self.use_potion(skill)
+            self.show_loot_message(f"{skill} utilisée !", (0, 255, 0))
+
+    def apply_passive_effects(self):
+        """Applique les effets passifs des compétences équipées"""
+        print("Application des effets passifs...")  # Debug
+        
+        # Réinitialiser les stats aux valeurs de base
+        base_speed = 3
+        base_stamina = 100
+        base_range = 50
+        base_damage = 25
+        
+        self.player.speed = base_speed
+        self.player.max_stamina = base_stamina
+        self.player.attack_range = base_range
+        self.player.attack_damage = base_damage
+        
+        # Réinitialiser le dash
+        if hasattr(self.player, 'dash_distance'):
+            delattr(self.player, 'dash_distance')
+            delattr(self.player, 'dash_stamina_cost')
+            delattr(self.player, 'dash_cooldown')
+            delattr(self.player, 'last_dash_time')
+            delattr(self.player, 'is_dashing')
+            delattr(self.player, 'dash_duration')
+            delattr(self.player, 'dash_start_time')
+            delattr(self.player, 'dash_direction')
+        
+        self.player_has_dash = False
+        
+        # Appliquer les bonus des compétences équipées
+        for i, skill in enumerate(self.equipped_skills):
+            if skill:
+                print(f"Applique compétence {skill.name} (slot {i})")  # Debug
+                if skill.effect_type == "speed":
+                    old_speed = self.player.speed
+                    self.player.speed *= (1 + skill.effect_value)
+                    print(f"Vitesse: {old_speed} -> {self.player.speed}")
+                elif skill.effect_type == "stamina":
+                    old_stamina = self.player.max_stamina
+                    self.player.max_stamina += skill.effect_value
+                    print(f"Stamina max: {old_stamina} -> {self.player.max_stamina}")
+                elif skill.effect_type == "dash":
+                    self.player.dash_distance = 150
+                    self.player.dash_stamina_cost = 50
+                    self.player.dash_cooldown = 1.0
+                    self.player.last_dash_time = 0
+                    self.player.is_dashing = False
+                    self.player.dash_duration = 0.2
+                    self.player.dash_start_time = 0
+                    self.player.dash_direction = (0, 0)
+                    self.player_has_dash = True
+                    print("Dash activé!")
+                # NOTE: berserker, dodge, crit, vampire sont gérés en temps réel
+        
+        # Appliquer les bonus d'arme
+        if self.player_weapon:
+            print(f"Applique arme: {self.player_weapon.name}")
+            old_damage = self.player.attack_damage
+            self.player.attack_damage += self.player_weapon.damage_bonus
+            print(f"Dégâts: {old_damage} -> {self.player.attack_damage}")
+            
+            if self.player_weapon.weapon_type == "sword":
+                old_range = self.player.attack_range
+                self.player.attack_range += self.player_weapon.range_bonus  # Utilise le bonus de l'arme
+                print(f"Portée: {old_range} -> {self.player.attack_range}")
+            # Les arcs n'ajoutent PAS de portée d'attaque au corps à corps
+        
+        # Ajuster la stamina actuelle si nécessaire
+        self.player.stamina = min(self.player.stamina, self.player.max_stamina)
+        print(f"Stats finales - Vitesse: {self.player.speed}, Dégâts: {self.player.attack_damage}, Portée: {self.player.attack_range}")
+
+    def use_skill(self, skill):
+        """Utilise une compétence active"""
+        if skill.effect_type == "dash" and self.player_has_dash:
+            success = self.player.dash(self.world)
+            if success:
+                self.show_loot_message("Dash !", (255, 255, 0))
+        # Les autres compétences sont passives pour l'instant
+
+    def use_potion(self, potion_name):
+        """Utilise une potion"""
+        if potion_name == "Potion de Vie":
+            old_hp = self.player.hp
+            self.player.hp = min(self.player.max_hp, self.player.hp + 50)
+            heal_amount = self.player.hp - old_hp
+            print(f"HP restaurés: +{heal_amount}")
+        elif potion_name == "Potion Complète":
+            self.player.hp = self.player.max_hp
+            self.player.stamina = self.player.max_stamina
+            print("HP et Stamina au maximum !")
