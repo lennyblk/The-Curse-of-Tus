@@ -91,13 +91,28 @@ class Enemy:
         self.width = 24
         self.height = 24
         self.speed = 3
-        self.hp = 3
-        self.max_hp = 3
+        
+        # HP ÉQUILIBRÉS pour survie aux attaques (15 dégâts base)
+        if enemy_type == "normal":
+            self.hp = 40  # AUGMENTÉ : 6 → 25 (2 coups pour tuer)
+            self.max_hp = 40
+        elif enemy_type == "patrol":
+            self.hp = 55  # AUGMENTÉ : 10 → 35 (3 coups pour tuer)
+            self.max_hp = 55
+        elif enemy_type == "stationary":
+            self.hp = 60  # AUGMENTÉ : 8 → 30 (2 coups pour tuer)
+            self.max_hp = 60
+        
         self.rect = pygame.Rect(x, y, self.width, self.height)
         self.alive = True
         
-        # Stats d'attaque
-        self.attack_damage = 15
+        # Système de barre de vie
+        self.show_health_bar = False
+        self.last_damage_time = 0
+        self.health_bar_duration = 5.0
+        
+        # Stats d'attaque légèrement réduites
+        self.attack_damage = 12  # RÉDUIT : 15 → 12
         self.attack_cooldown = 1.5
         self.last_attack_time = 0
         
@@ -112,7 +127,7 @@ class Enemy:
         self.detection_range = 100
         
         # Pour les ennemis à distance
-        self.shoot_cooldown = 2.0  # Tire toutes les 2 secondes
+        self.shoot_cooldown = 2.0
         self.last_shoot_time = 0
         self.shoot_range = 150
     
@@ -176,7 +191,7 @@ class Enemy:
             
             if (self.check_collision(new_x, new_y, world) or 
                 self.patrol_distance >= self.max_patrol_distance or
-                self.check_room_boundary(new_x, new_y, world)):  # AJOUTER ÇA
+                self.check_room_boundary(new_x, new_y, world)):
                 self.patrol_direction = (-self.patrol_direction[0], -self.patrol_direction[1])
                 self.patrol_distance = 0
             else:
@@ -219,18 +234,6 @@ class Enemy:
             self.rect.x = int(self.x)
             self.rect.y = int(self.y)
     
-    def reset(self):
-        self.x = self.start_x
-        self.y = self.start_y
-        self.hp = self.max_hp
-        self.alive = True
-        self.rect.x = int(self.x)
-        self.rect.y = int(self.y)
-        self.patrol_distance = 0
-        self.is_aggressive = False  # Reset de l'agressivité
-        self.patrol_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
-    
-    # ... (garder toutes les autres méthodes comme avant)
     def attack_player(self, player):
         current_time = time.time()
         if current_time - self.last_attack_time < self.attack_cooldown:
@@ -241,9 +244,16 @@ class Enemy:
         return True
     
     def take_damage(self, damage):
+        """Ennemi prend des dégâts - MODIFIÉ pour barre de vie"""
         self.hp -= damage
+        
+        # NOUVEAU: Activer la barre de vie
+        self.show_health_bar = True
+        self.last_damage_time = time.time()
+        
         if self.hp <= 0:
             self.alive = False
+            print(f"Ennemi {self.enemy_type} éliminé !")
     
     def check_collision(self, x, y, world):
         corners = [(x, y), (x + self.width, y), 
@@ -272,29 +282,6 @@ class Enemy:
         player_rect = pygame.Rect(player.x, player.y, player.width, player.height)
         return temp_rect.colliderect(player_rect)
     
-    def draw(self, screen, camera_x, camera_y):
-        if self.alive:
-            screen_x = self.x - camera_x
-            screen_y = self.y - camera_y
-            
-            current_time = time.time()
-            if current_time - self.last_attack_time < 0.2:
-                if self.enemy_type == "stationary":
-                    color = (255, 150, 0)
-                elif self.enemy_type == "patrol":
-                    color = (150, 100, 255) if not self.is_aggressive else (255, 100, 255)
-                else:
-                    color = (255, 100, 100)
-            else:
-                if self.enemy_type == "stationary":
-                    color = (255, 100, 0)
-                elif self.enemy_type == "patrol":
-                    color = (100, 50, 200) if not self.is_aggressive else (200, 50, 200)
-                else:
-                    color = (255, 0, 0)
-            
-            pygame.draw.rect(screen, color, (screen_x, screen_y, self.width, self.height))
-
     def check_room_boundary(self, x, y, world):
         """Empêche l'ennemi de sortir de sa salle d'origine"""
         # Convertir position en tiles
@@ -316,3 +303,98 @@ class Enemy:
                     return True   # Collision, sort de la salle
         
         return False
+    
+    def reset(self):
+        self.x = self.start_x
+        self.y = self.start_y
+        self.hp = self.max_hp
+        self.alive = True
+        self.rect.x = int(self.x)
+        self.rect.y = int(self.y)
+        self.patrol_distance = 0
+        self.is_aggressive = False  # Reset de l'agressivité
+        self.patrol_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)])
+        
+        # NOUVEAU: Reset barre de vie
+        self.show_health_bar = False
+        self.last_damage_time = 0
+    
+    def draw(self, screen, camera_x, camera_y):
+        if self.alive:
+            screen_x = self.x - camera_x
+            screen_y = self.y - camera_y
+            
+            current_time = time.time()
+            
+            # Couleur selon état et type
+            if current_time - self.last_attack_time < 0.2:
+                if self.enemy_type == "stationary":
+                    color = (255, 150, 0)
+                elif self.enemy_type == "patrol":
+                    color = (150, 100, 255) if not self.is_aggressive else (255, 100, 255)
+                else:
+                    color = (255, 100, 100)
+            else:
+                if self.enemy_type == "stationary":
+                    color = (255, 100, 0)
+                elif self.enemy_type == "patrol":
+                    color = (100, 50, 200) if not self.is_aggressive else (200, 50, 200)
+                else:
+                    color = (255, 0, 0)
+            
+            # Dessiner l'ennemi
+            pygame.draw.rect(screen, color, (screen_x, screen_y, self.width, self.height))
+            
+            # NOUVEAU: Dessiner la barre de vie si nécessaire
+            self.draw_health_bar(screen, screen_x, screen_y, current_time)
+    
+    def draw_health_bar(self, screen, screen_x, screen_y, current_time):
+        """Dessine la barre de vie de l'ennemi"""
+        # Vérifier si on doit afficher la barre
+        if not self.show_health_bar:
+            return
+        
+        # Masquer la barre après un certain temps
+        if current_time - self.last_damage_time > self.health_bar_duration:
+            self.show_health_bar = False
+            return
+        
+        # Dimensions de la barre
+        bar_width = 30
+        bar_height = 4
+        bar_x = screen_x - 3  # Centrer par rapport à l'ennemi
+        bar_y = screen_y - 8  # Au-dessus de l'ennemi
+        
+        # Fond de la barre (noir semi-transparent)
+        bg_surface = pygame.Surface((bar_width, bar_height))
+        bg_surface.set_alpha(150)
+        bg_surface.fill((0, 0, 0))
+        screen.blit(bg_surface, (bar_x, bar_y))
+        
+        # Barre de vie
+        health_ratio = self.hp / self.max_hp
+        health_width = int(bar_width * health_ratio)
+        
+        # Couleur selon le pourcentage de vie
+        if health_ratio > 0.6:
+            health_color = (0, 255, 0)  # Vert
+        elif health_ratio > 0.3:
+            health_color = (255, 255, 0)  # Jaune
+        else:
+            health_color = (255, 0, 0)  # Rouge
+        
+        # Dessiner la barre de vie
+        if health_width > 0:
+            pygame.draw.rect(screen, health_color, (bar_x, bar_y, health_width, bar_height))
+        
+        # Bordure fine
+        pygame.draw.rect(screen, (255, 255, 255), (bar_x, bar_y, bar_width, bar_height), 1)
+        
+        # Effet de fade out progressif
+        time_remaining = self.health_bar_duration - (current_time - self.last_damage_time)
+        if time_remaining < 1.0:  # Dernière seconde
+            alpha = int(255 * time_remaining)
+            fade_surface = pygame.Surface((bar_width, bar_height))
+            fade_surface.set_alpha(255 - alpha)
+            fade_surface.fill((30, 30, 30))  # Même couleur que le fond
+            screen.blit(fade_surface, (bar_x, bar_y))

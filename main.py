@@ -17,7 +17,7 @@ while True:
             sys.exit()
         elif event.type == pygame.KEYDOWN:  
             game.handle_key_press(event.key)
-            if event.key == pygame.K_LCTRL or event.key == pygame.K_l:  # Ctrl ou C pour dash
+            if event.key == pygame.K_LCTRL:
                 game.player.dash(game.world)
     
     game.update()

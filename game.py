@@ -1,4 +1,4 @@
-# game.py - Corrections pour le système de compétences
+# game.py - Version corrigée avec fix berserker et système de portes
 import pygame
 from player import Player
 from world import World
@@ -29,11 +29,11 @@ class Game:
         self.screen = screen
         self.world = World(100, 80)
         self.player = Player(320, 320)
-        self.player.set_game_reference(self)  # Connecter le joueur au jeu
+        self.player.set_game_reference(self)
         self.camera = Camera(screen.get_width(), screen.get_height())
         self.ui = UI(screen.get_width(), screen.get_height())
-        self.projectiles = []  # Projectiles des ennemis
-        self.player_projectiles = []  # Projectiles du joueur
+        self.projectiles = []
+        self.player_projectiles = []
         
         # Associer chaque ennemi à sa salle
         self.room_enemies = {
@@ -57,60 +57,59 @@ class Game:
 
         self.chests = []
         self.player_skills = []  
-        self.equipped_skills = []  # 4 compétences équipées max
+        self.equipped_skills = []
         self.player_weapon = None
 
-        # Positions des coffres (apparaissent après nettoyage des salles)
+        # Positions des coffres CORRIGÉES selon nouvelles positions des salles
         self.chest_positions = {
-            "room1": (1200, 450),
-            "room2": (1900, 350),
-            "central": (900, 1200),
-            "right": (1700, 1000),
-            "big": (2600, 900),
-            "bottom": (600, 2000),
-            "boss": (1700, 1800),
-            "secret": (2700, 1900)
+            "room1": (1024, 450),     # room1 déplacée de 25→22 (diff: -96px)
+            "room2": (1764, 350),     # room2 déplacée de 50→45 (diff: -160px)
+            "central": (900, 1200),   # central inchangée
+            "right": (1604, 1000),    # right déplacée de 45→42 (diff: -96px)
+            "big": (2440, 900),       # big déplacée de 70→65 (diff: -160px)
+            "bottom": (600, 2000),    # bottom inchangée
+            "boss": (1700, 1800),     # boss inchangée
+            "secret": (2604, 1900)    # secret déplacée de 75→72 (diff: -96px)
         }
 
         self.menu = InventoryMenu(screen.get_width(), screen.get_height())
-        self.equipped_skills = [None, None, None, None]  # H, J, K, L
+        self.equipped_skills = [None, None, None, None]
         
-        # Le joueur commence sans dash (doit le looter)
         self.player_has_dash = False
         
         # Messages de loot
         self.loot_message = None
         self.loot_message_time = 0
-        self.loot_message_duration = 3.0  # 3 secondes
+        self.loot_message_duration = 3.0
     
     def create_enemies(self):
         self.enemies = []
         
-        # === SALLE 1 (25, 8, 20, 18) ===
+        # === SALLE 1 CORRIGÉE (22, 8, 20, 18) - Nouvelles positions ===
         room1_enemies = [
-            Enemy(1120, 540, "stationary"), Enemy(1200, 480, "stationary"),
-            Enemy(850, 300, "patrol"), Enemy(1380, 300, "patrol"),
-            Enemy(850, 780, "patrol"), Enemy(1380, 780, "patrol"),
-            Enemy(950, 350, "normal"), Enemy(1100, 350, "normal"),
-            Enemy(1250, 350, "normal"), Enemy(950, 700, "normal"),
-            Enemy(1100, 700, "normal"), Enemy(1250, 700, "normal"),
+            Enemy(1024, 540, "stationary"), Enemy(1104, 480, "stationary"),
+            Enemy(754, 300, "patrol"), Enemy(1284, 300, "patrol"),
+            Enemy(754, 780, "patrol"), Enemy(1284, 780, "patrol"),
+            Enemy(854, 350, "normal"), Enemy(1004, 350, "normal"),
+            Enemy(1154, 350, "normal"), Enemy(854, 700, "normal"),
+            Enemy(1004, 700, "normal"), Enemy(1154, 700, "normal"),
         ]
         self.enemies.extend(room1_enemies)
         self.room_enemies["room1"] = room1_enemies
         
-        # === SALLE 2 (50, 5, 18, 15) ===
+        # === SALLE 2 CORRIGÉE (45, 5, 18, 15) - Nouvelles positions ===
         room2_enemies = [
-            Enemy(1888, 400, "stationary"),
-            Enemy(1650, 200, "patrol"), Enemy(2100, 200, "patrol"),
-            Enemy(1650, 580, "patrol"), Enemy(2100, 580, "patrol"),
-            Enemy(1750, 280, "normal"), Enemy(1850, 280, "normal"),
-            Enemy(1950, 280, "normal"), Enemy(1750, 520, "normal"),
-            Enemy(1850, 520, "normal"), Enemy(1950, 520, "normal"),
+            Enemy(1728, 400, "stationary"),
+            Enemy(1490, 200, "patrol"), Enemy(1940, 200, "patrol"),
+            Enemy(1490, 580, "patrol"), Enemy(1940, 580, "patrol"),
+            Enemy(1590, 280, "normal"), Enemy(1690, 280, "normal"),
+            Enemy(1790, 280, "normal"), Enemy(1590, 520, "normal"),
+            Enemy(1690, 520, "normal"), Enemy(1790, 520, "normal"),
         ]
         self.enemies.extend(room2_enemies)
         self.room_enemies["room2"] = room2_enemies
         
-        # === SALLE CENTRALE (15, 30, 25, 20) ===
+        # === SALLE CENTRALE (15, 30, 25, 20) - Inchangée ===
         central_enemies = [
             Enemy(720, 1200, "stationary"), Enemy(880, 1200, "stationary"),
             Enemy(1040, 1200, "stationary"), Enemy(880, 1080, "stationary"),
@@ -126,37 +125,37 @@ class Game:
         self.enemies.extend(central_enemies)
         self.room_enemies["central"] = central_enemies
         
-        # === SALLE DROITE (45, 25, 20, 15) ===
+        # === SALLE DROITE CORRIGÉE (42, 25, 20, 15) - Nouvelles positions ===
         right_enemies = [
-            Enemy(1760, 1040, "stationary"),
-            Enemy(1480, 840, "patrol"), Enemy(2020, 840, "patrol"),
-            Enemy(1480, 1240, "patrol"), Enemy(2020, 1240, "patrol"),
-            Enemy(1600, 920, "normal"), Enemy(1720, 920, "normal"),
-            Enemy(1840, 920, "normal"), Enemy(1600, 1160, "normal"),
-            Enemy(1720, 1160, "normal"), Enemy(1840, 1160, "normal"),
+            Enemy(1664, 1040, "stationary"),
+            Enemy(1384, 840, "patrol"), Enemy(1924, 840, "patrol"),
+            Enemy(1384, 1240, "patrol"), Enemy(1924, 1240, "patrol"),
+            Enemy(1504, 920, "normal"), Enemy(1624, 920, "normal"),
+            Enemy(1744, 920, "normal"), Enemy(1504, 1160, "normal"),
+            Enemy(1624, 1160, "normal"), Enemy(1744, 1160, "normal"),
         ]
         self.enemies.extend(right_enemies)
         self.room_enemies["right"] = right_enemies
         
-        # === GRANDE SALLE (70, 20, 25, 25) ===
+        # === GRANDE SALLE CORRIGÉE (65, 20, 25, 25) - Nouvelles positions ===
         big_enemies = [
-            Enemy(2480, 900, "stationary"), Enemy(2640, 900, "stationary"),
-            Enemy(2800, 900, "stationary"), Enemy(2560, 780, "stationary"),
-            Enemy(2560, 1020, "stationary"), Enemy(2720, 780, "stationary"),
-            Enemy(2720, 1020, "stationary"), Enemy(2280, 680, "patrol"),
-            Enemy(2980, 680, "patrol"), Enemy(2280, 1380, "patrol"),
-            Enemy(2980, 1380, "patrol"), Enemy(2280, 900, "patrol"),
-            Enemy(2980, 900, "patrol"), Enemy(2360, 800, "normal"),
-            Enemy(2440, 800, "normal"), Enemy(2600, 800, "normal"),
-            Enemy(2760, 800, "normal"), Enemy(2840, 800, "normal"),
-            Enemy(2360, 1000, "normal"), Enemy(2440, 1000, "normal"),
-            Enemy(2600, 1000, "normal"), Enemy(2760, 1000, "normal"),
-            Enemy(2840, 1000, "normal"),
+            Enemy(2320, 900, "stationary"), Enemy(2480, 900, "stationary"),
+            Enemy(2640, 900, "stationary"), Enemy(2400, 780, "stationary"),
+            Enemy(2400, 1020, "stationary"), Enemy(2560, 780, "stationary"),
+            Enemy(2560, 1020, "stationary"), Enemy(2120, 680, "patrol"),
+            Enemy(2820, 680, "patrol"), Enemy(2120, 1380, "patrol"),
+            Enemy(2820, 1380, "patrol"), Enemy(2120, 900, "patrol"),
+            Enemy(2820, 900, "patrol"), Enemy(2200, 800, "normal"),
+            Enemy(2280, 800, "normal"), Enemy(2440, 800, "normal"),
+            Enemy(2600, 800, "normal"), Enemy(2680, 800, "normal"),
+            Enemy(2200, 1000, "normal"), Enemy(2280, 1000, "normal"),
+            Enemy(2440, 1000, "normal"), Enemy(2600, 1000, "normal"),
+            Enemy(2680, 1000, "normal"),
         ]
         self.enemies.extend(big_enemies)
         self.room_enemies["big"] = big_enemies
         
-        # === SALLE BAS-GAUCHE (10, 55, 20, 15) ===
+        # === SALLE BAS-GAUCHE (10, 55, 20, 15) - Inchangée ===
         bottom_enemies = [
             Enemy(640, 2000, "stationary"),
             Enemy(360, 1800, "patrol"), Enemy(920, 1800, "patrol"),
@@ -168,7 +167,7 @@ class Game:
         self.enemies.extend(bottom_enemies)
         self.room_enemies["bottom"] = bottom_enemies
         
-        # === SALLE BOSS (40, 50, 30, 20) ===
+        # === SALLE BOSS (40, 50, 30, 20) - Inchangée ===
         boss_enemies = [
             Enemy(1520, 1840, "stationary"), Enemy(1680, 1840, "stationary"),
             Enemy(1840, 1840, "stationary"), Enemy(2000, 1840, "stationary"),
@@ -191,12 +190,12 @@ class Game:
         self.enemies.extend(boss_enemies)
         self.room_enemies["boss"] = boss_enemies
         
-        # === SALLE SECRÈTE (75, 50, 20, 20) ===
+        # === SALLE SECRÈTE CORRIGÉE (72, 50, 20, 20) - Nouvelles positions ===
         secret_enemies = [
-            Enemy(2640, 1840, "stationary"),
-            Enemy(2720, 1760, "patrol"), Enemy(2720, 1920, "patrol"),
-            Enemy(2480, 1840, "normal"), Enemy(2560, 1840, "normal"),
-            Enemy(2800, 1840, "normal"), Enemy(2880, 1840, "normal"),
+            Enemy(2544, 1840, "stationary"),
+            Enemy(2624, 1760, "patrol"), Enemy(2624, 1920, "patrol"),
+            Enemy(2384, 1840, "normal"), Enemy(2464, 1840, "normal"),
+            Enemy(2704, 1840, "normal"), Enemy(2784, 1840, "normal"),
         ]
         self.enemies.extend(secret_enemies)
         self.room_enemies["secret"] = secret_enemies
@@ -212,31 +211,43 @@ class Game:
         return True
     
     def check_door_interaction(self):
-        """Vérifie si le joueur peut interagir avec une porte"""
+        """Vérifie si le joueur peut interagir avec une porte - VERSION CORRIGÉE"""
         current_room = self.world.get_player_room(self.player.x, self.player.y)
         
         if not current_room:
             return None
         
-        # Vérifier chaque porte
+        # Vérifier chaque porte où le joueur PEUT être (from OU to)
         for door in self.world.doors:
-            if door["from"] == current_room:
+            # CORRECTION: Vérifier si le joueur est dans l'une des deux salles connectées
+            if door["from"] == current_room or door["to"] == current_room:
                 corridor = door["corridor"]
-                # Position du centre du couloir en pixels
-                door_center_x = (corridor[0] + corridor[2]//2) * self.world.tile_size
-                door_center_y = (corridor[1] + corridor[3]//2) * self.world.tile_size
                 
-                # Distance joueur-porte
+                # EXCEPTION: Position spéciale pour la porte right→boss
+                if door["from"] == "right" and door["to"] == "boss":
+                    # Position de la porte au DÉBUT du couloir
+                    door_center_x = corridor[0] * self.world.tile_size + 16
+                    door_center_y = corridor[1] * self.world.tile_size + 16
+                else:
+                    # Position normale au centre du couloir pour les autres portes
+                    door_center_x = (corridor[0] + corridor[2]//2) * self.world.tile_size
+                    door_center_y = (corridor[1] + corridor[3]//2) * self.world.tile_size
+                
                 player_center_x = self.player.x + self.player.width//2
                 player_center_y = self.player.y + self.player.height//2
                 
                 distance = ((player_center_x - door_center_x)**2 + (player_center_y - door_center_y)**2)**0.5
                 
                 if distance <= self.door_interaction_distance:
-                    to_room = door["to"]
+                    # Déterminer quelle salle on veut ouvrir
+                    if door["from"] == current_room:
+                        target_room = door["to"]
+                    else:
+                        target_room = door["from"]
+                    
                     # Vérifier si la salle actuelle est nettoyée
                     if self.check_room_cleared(current_room):
-                        return {"door": door, "can_open": True, "to_room": to_room}
+                        return {"door": door, "can_open": True, "to_room": target_room}
                     else:
                         alive_count = sum(1 for enemy in self.room_enemies[current_room] if enemy.alive)
                         return {"door": door, "can_open": False, 
@@ -250,7 +261,6 @@ class Game:
             self.restart_game()
             return
         
-        # Update du joueur avec système amélioré
         self.update_player()
         
         for enemy in self.enemies:
@@ -259,13 +269,11 @@ class Game:
         self.projectiles = [proj for proj in self.projectiles 
                         if proj.update(self.player, self.world)]
         
-        # Mettre à jour les projectiles du joueur
         self.player_projectiles = [proj for proj in self.player_projectiles 
                                 if proj.update(self.world, self.enemies)]
         
         for projectile in self.projectiles[:]:
             if projectile.rect.colliderect(self.player.rect):
-                # Vérifier esquive
                 if self.check_dodge():
                     print("Esquive réussie !")
                     self.show_loot_message("Esquive !", (0, 255, 255))
@@ -273,30 +281,29 @@ class Game:
                     self.player.take_damage(10)
                 self.projectiles.remove(projectile)
         
-        # Vérifier interaction avec portes
         self.near_door = self.check_door_interaction()
         self.camera.follow_player(self.player, self.world)
 
-        # Vérifier si des coffres doivent apparaître
         for room_name in self.room_enemies.keys():
             if room_name != "spawn":
                 self.spawn_chest_if_room_cleared(room_name)
         
-        # Vérifier interaction avec coffres
         self.check_chest_interaction()
     
     def update_player(self):
         """Met à jour le joueur avec gestion des compétences améliorée"""
         self.player.update(self.world, self.enemies, self.player_weapon, self.player_projectiles)
         
-        # Appliquer berserker en temps réel
         self.apply_berserker_effect()
         
-        # Vérifier vampirisme sur kills
         self.check_vampire_healing()
     
     def apply_berserker_effect(self):
-        """Applique l'effet Berserker si HP < 50%"""
+        """Applique l'effet Berserker si HP < 50% - VERSION CORRIGÉE"""
+        # Définir les valeurs de base AVANT la logique
+        base_damage = 25
+        weapon_bonus = self.player_weapon.damage_bonus if self.player_weapon else 0
+        
         berserker_skill = None
         for skill in self.equipped_skills:
             if skill and skill.effect_type == "berserker":
@@ -304,17 +311,11 @@ class Game:
                 break
         
         if berserker_skill and self.player.hp < self.player.max_hp * 0.5:
-            # Calculer les dégâts de base (sans berserker)
-            base_damage = 25  # Dégâts de base
-            weapon_bonus = self.player_weapon.damage_bonus if self.player_weapon else 0
-            
             # Appliquer bonus berserker
             berserker_damage = int((base_damage + weapon_bonus) * berserker_skill.effect_value)
             self.player.attack_damage = base_damage + weapon_bonus + berserker_damage
         else:
             # Recalculer les dégâts normaux
-            base_damage = 25
-            weapon_bonus = self.player_weapon.damage_bonus if self.player_weapon else 0
             self.player.attack_damage = base_damage + weapon_bonus
     
     def check_vampire_healing(self):
@@ -326,7 +327,6 @@ class Game:
                 break
         
         if vampire_skill:
-            # Compter les ennemis morts depuis la dernière vérification
             dead_enemies = sum(1 for enemy in self.enemies if not enemy.alive)
             if not hasattr(self, 'last_dead_count'):
                 self.last_dead_count = 0
@@ -370,28 +370,23 @@ class Game:
     
     def restart_game(self):
         self.player = Player(320, 320)
-        self.player.set_game_reference(self)  # Reconnecter après restart
+        self.player.set_game_reference(self)
         self.projectiles = []
-        self.player_projectiles = []  # Reset projectiles joueur
+        self.player_projectiles = []
         
-        # Reset des coffres
         self.chests = []
         
-        # Reset des compétences
         self.equipped_skills = [None, None, None, None]
         self.player_weapon = None
         self.player_has_dash = False
         
-        # Reset compteurs
         self.last_dead_count = 0
         self.loot_message = None
         
-        # Réinitialiser toutes les salles sauf spawn
         for room_name in self.world.rooms:
             if room_name != "spawn":
                 self.world.rooms[room_name]["unlocked"] = False
         
-        # Remettre tous les ennemis en vie
         for enemy in self.enemies:
             enemy.reset()
         
@@ -408,7 +403,6 @@ class Game:
         for projectile in self.projectiles:
             projectile.draw(self.screen, self.camera.x, self.camera.y)
         
-        # Dessiner projectiles du joueur
         for projectile in self.player_projectiles:
             projectile.draw(self.screen, self.camera.x, self.camera.y)
         
@@ -417,7 +411,6 @@ class Game:
         
         self.player.draw(self.screen, self.camera.x, self.camera.y)
         
-        # Messages de porte (seulement si pas de menu)
         if self.near_door and not self.menu.is_open and not self.menu.showing_loot:
             if self.near_door["can_open"]:
                 message = f"Appuyez sur F pour ouvrir vers {self.near_door.get('to_room', 'salle')}"
@@ -437,13 +430,10 @@ class Game:
             self.screen.blit(bg_surface, bg_rect)
             self.screen.blit(text, text_rect)
         
-        # Message de loot
         self.draw_loot_message()
         
-        # CHANGER CETTE LIGNE :
         self.ui.draw_hud(self.screen, self.player, self.enemies, self.player_weapon)
         
-        # Dessiner les menus par-dessus tout
         self.menu.draw(self.screen, self.equipped_skills)
 
     def draw_loot_message(self):
@@ -454,7 +444,6 @@ class Game:
             text = font.render(self.loot_message["text"], True, self.loot_message["color"])
             text_rect = text.get_rect(center=(self.screen.get_width()//2, 200))
             
-            # Fond semi-transparent
             bg_rect = text_rect.inflate(40, 20)
             bg_surface = pygame.Surface((bg_rect.width, bg_rect.height))
             bg_surface.set_alpha(200)
@@ -473,11 +462,9 @@ class Game:
         """Détermine si un ennemi doit être visible"""
         enemy_room = self.world.get_player_room(enemy.x, enemy.y)
         
-        # Si dans une salle déverrouillée
         if enemy_room and self.world.rooms.get(enemy_room, {}).get("unlocked", False):
             return True
         
-        # Si dans un couloir entre deux salles déverrouillées
         enemy_tile_x = int(enemy.x // self.world.tile_size)
         enemy_tile_y = int(enemy.y // self.world.tile_size)
         
@@ -485,7 +472,6 @@ class Game:
             corridor = door["corridor"]
             if (corridor[0] <= enemy_tile_x < corridor[0] + corridor[2] and
                 corridor[1] <= enemy_tile_y < corridor[1] + corridor[3]):
-                # Dans un couloir - vérifier si au moins une salle connectée est déverrouillée
                 from_room = self.world.rooms[door["from"]]
                 to_room = self.world.rooms[door["to"]]
                 return from_room["unlocked"] or to_room["unlocked"]
@@ -495,7 +481,6 @@ class Game:
     def handle_key_press(self, key):
         """Gérer les pressions de touches depuis main.py"""
         
-        # Gestion du menu de loot
         if self.menu.showing_loot:
             result = self.menu.handle_loot_input(key, self.equipped_skills)
             if result == "cancel":
@@ -504,23 +489,29 @@ class Game:
                 self.equip_skill(result["item"], result["slot"])
             return
         
-        # Inventaire
         if key == pygame.K_i:
             self.menu.toggle_inventory()
             return
         
-        # Si inventaire ouvert, pas d'autres actions
         if self.menu.is_open:
             return
         
-        # Portes
         if key == pygame.K_f:
             if self.near_door and self.near_door["can_open"]:
                 to_room = self.near_door["door"]["to"]
-                self.world.unlock_room(to_room)
+                # CORRECTION: Si on est dans la salle "to", alors on déverrouille "from"
+                current_room = self.world.get_player_room(self.player.x, self.player.y)
+                if current_room == self.near_door["door"]["to"]:
+                    # Si on est dans la salle de destination, on déverrouille l'autre
+                    target_room = self.near_door["door"]["from"]
+                else:
+                    # Sinon on déverrouille la salle de destination
+                    target_room = self.near_door["door"]["to"]
+                
+                self.world.unlock_room(target_room)
+                print(f"Porte ouverte ! Salle {target_room} déverrouillée depuis {current_room}")
                 self.near_door = None
         
-        # Compétences équipées (HJKL)
         elif key == pygame.K_h and self.equipped_skills[0]:
             self.use_skill(self.equipped_skills[0])
         elif key == pygame.K_j and self.equipped_skills[1]:
@@ -555,55 +546,50 @@ class Game:
 
     def handle_loot(self, loot):
         """Gère le loot obtenu"""
-        if hasattr(loot, 'effect_type'):  # Compétence
+        if hasattr(loot, 'effect_type'):
             self.menu.show_loot_selection(loot)
-        elif hasattr(loot, 'weapon_type'):  # Arme
+        elif hasattr(loot, 'weapon_type'):
             self.menu.show_loot_selection(loot)
-        else:  # C'est une potion
+        else:
             self.use_potion(loot)
             self.show_loot_message(f"{loot} utilisée !", (0, 255, 0))
 
-    # Compétences
-    
     def equip_skill(self, skill, slot):
         """Équipe une compétence dans un slot"""
-        if hasattr(skill, 'effect_type'):  # C'est une compétence
+        if hasattr(skill, 'effect_type'):
             old_skill = self.equipped_skills[slot]
             self.equipped_skills[slot] = skill
             skill.key_binding = ['H', 'J', 'K', 'L'][slot]
             
-            # Appliquer les effets passifs
             self.apply_passive_effects()
             
             print(f"Compétence {skill.name} équipée sur {skill.key_binding}")
             if old_skill:
                 print(f"Ancienne compétence {old_skill.name} remplacée")
         
-        elif hasattr(skill, 'weapon_type'):  # Arme
+        elif hasattr(skill, 'weapon_type'):
             self.player_weapon = skill
-            self.apply_passive_effects()  # Réappliquer tous les effets
+            self.apply_passive_effects()
             print(f"Arme équipée : {skill.name}")
         
-        else:  # Potion
+        else:
             self.use_potion(skill)
             self.show_loot_message(f"{skill} utilisée !", (0, 255, 0))
 
     def apply_passive_effects(self):
         """Applique les effets passifs des compétences équipées"""
-        print("Application des effets passifs...")  # Debug
+        print("Application des effets passifs...")
         
-        # Réinitialiser les stats aux valeurs de base
         base_speed = 3
-        base_stamina = 100
-        base_range = 50
-        base_damage = 25
+        base_stamina = 50  
+        base_range = 35    
+        base_damage = 5   
         
         self.player.speed = base_speed
         self.player.max_stamina = base_stamina
         self.player.attack_range = base_range
         self.player.attack_damage = base_damage
         
-        # Réinitialiser le dash
         if hasattr(self.player, 'dash_distance'):
             delattr(self.player, 'dash_distance')
             delattr(self.player, 'dash_stamina_cost')
@@ -616,10 +602,9 @@ class Game:
         
         self.player_has_dash = False
         
-        # Appliquer les bonus des compétences équipées
         for i, skill in enumerate(self.equipped_skills):
             if skill:
-                print(f"Applique compétence {skill.name} (slot {i})")  # Debug
+                print(f"Applique compétence {skill.name} (slot {i})")
                 if skill.effect_type == "speed":
                     old_speed = self.player.speed
                     self.player.speed *= (1 + skill.effect_value)
@@ -639,9 +624,7 @@ class Game:
                     self.player.dash_direction = (0, 0)
                     self.player_has_dash = True
                     print("Dash activé!")
-                # NOTE: berserker, dodge, crit, vampire sont gérés en temps réel
         
-        # Appliquer les bonus d'arme
         if self.player_weapon:
             print(f"Applique arme: {self.player_weapon.name}")
             old_damage = self.player.attack_damage
@@ -650,11 +633,9 @@ class Game:
             
             if self.player_weapon.weapon_type == "sword":
                 old_range = self.player.attack_range
-                self.player.attack_range += self.player_weapon.range_bonus  # Utilise le bonus de l'arme
+                self.player.attack_range += self.player_weapon.range_bonus
                 print(f"Portée: {old_range} -> {self.player.attack_range}")
-            # Les arcs n'ajoutent PAS de portée d'attaque au corps à corps
         
-        # Ajuster la stamina actuelle si nécessaire
         self.player.stamina = min(self.player.stamina, self.player.max_stamina)
         print(f"Stats finales - Vitesse: {self.player.speed}, Dégâts: {self.player.attack_damage}, Portée: {self.player.attack_range}")
 
@@ -664,10 +645,9 @@ class Game:
             success = self.player.dash(self.world)
             if success:
                 self.show_loot_message("Dash !", (255, 255, 0))
-        # Les autres compétences sont passives pour l'instant
 
     def use_potion(self, potion_name):
-        """Utilise une potion"""
+        """Utilise une potion - VERSION CORRIGÉE"""
         if potion_name == "Potion de Vie":
             old_hp = self.player.hp
             self.player.hp = min(self.player.max_hp, self.player.hp + 50)

@@ -85,25 +85,22 @@ class Player:
         self.speed = 3
         self.rect = pygame.Rect(x, y, self.width, self.height)
         
-        # Stats de combat
-        self.max_hp = 400
+        # Stats de combat ÉQUILIBRÉES CORRIGÉES
+        self.max_hp = 250
         self.hp = self.max_hp
-        self.max_stamina = 50
+        self.max_stamina = 50  # Gardé à 50
         self.stamina = self.max_stamina
-        self.attack_damage = 25
-        self.attack_range = 50
+        self.attack_damage = 15  # RÉDUIT : 25 → 15 pour ne pas one-shot
+        self.attack_range = 35  # Réduit aussi un peu
         
         # Timers - Cooldowns différents selon l'arme
         self.last_attack_time = 0
-        self.melee_cooldown = 0.5  # Épée rapide
-        self.bow_cooldown = 1.2    # Arc plus lent
+        self.melee_cooldown = 0.5
+        self.bow_cooldown = 1.2
         self.last_damage_time = 0
-        self.damage_cooldown = 1.0  
+        self.damage_cooldown = 1.0
 
-        # Le dash sera ajouté dynamiquement par les compétences
         self.alive = True
-        
-        # Référence au jeu pour accéder aux compétences
         self.game_ref = None
     
     def set_game_reference(self, game):
@@ -323,24 +320,60 @@ class Player:
         return self.check_door_collision(x, y, world)
     
     def check_door_collision(self, x, y, world):
-        """Empêche le joueur de traverser les portes fermées - HITBOX RÉDUITE"""
+        """Empêche le joueur de traverser les portes fermées - LOGIQUE FINALE CORRIGÉE"""
         player_tile_x = int(x // world.tile_size)
         player_tile_y = int(y // world.tile_size)
+        
+        # D'abord, déterminer la salle actuelle du joueur
+        current_room = world.get_player_room(self.x, self.y)
         
         for door in world.doors:
             corridor = door["corridor"]
             from_room = world.rooms[door["from"]]
             to_room = world.rooms[door["to"]]
             
-            # Si le joueur est dans le couloir ET que les salles ne sont pas déverrouillées
+            # Si le joueur essaie d'entrer dans le couloir
             if (corridor[0] <= player_tile_x < corridor[0] + corridor[2] and
                 corridor[1] <= player_tile_y < corridor[1] + corridor[3]):
                 
-                # SEULEMENT bloquer si AUCUNE des deux salles n'est déverrouillée
-                if not from_room["unlocked"] and not to_room["unlocked"]:
-                    return True  # Collision = empêcher le passage
+                # CAS 1: Si les DEUX salles sont déverrouillées -> PASSAGE LIBRE (porte verte)
+                if from_room["unlocked"] and to_room["unlocked"]:
+                    print(f"Porte verte {door['from']} ↔ {door['to']} - Passage libre")
+                    return False  # Pas de collision = passage autorisé
+                
+                # Déterminer vers quelle salle le joueur essaie d'aller
+                if current_room == door["from"]:
+                    # Le joueur va de "from" vers "to"
+                    target_room_name = door["to"]
+                    target_room = to_room
+                    origin_room = from_room
+                elif current_room == door["to"]:
+                    # Le joueur va de "to" vers "from"
+                    target_room_name = door["from"]
+                    target_room = from_room
+                    origin_room = to_room
+                else:
+                    # Le joueur n'est dans aucune des salles connectées
+                    print(f"Joueur dans couloir sans salle d'origine identifiée - Bloquer")
+                    return True
+                
+                # CAS 2: Si la salle d'origine n'est pas déverrouillée -> BLOQUER
+                if not origin_room["unlocked"]:
+                    print(f"Salle d'origine {current_room} non déverrouillée - Bloquer")
+                    return True
+                
+                # CAS 3: Si la salle de destination n'est pas déverrouillée -> BLOQUER
+                # (Le joueur doit d'abord nettoyer sa salle actuelle et utiliser F pour ouvrir)
+                if not target_room["unlocked"]:
+                    print(f"Salle destination {target_room_name} fermée - Bloquer passage")
+                    return True
+                
+                # CAS 4: Si on arrive ici, les deux salles sont déverrouillées -> PERMETTRE
+                print(f"Passage autorisé de {current_room} vers {target_room_name}")
+                return False
         
-        return False
+        return False  # Pas dans un couloir = pas de collision de porte
+    
     
     def draw(self, screen, camera_x, camera_y):
         if self.alive:
