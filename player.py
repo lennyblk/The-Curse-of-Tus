@@ -86,11 +86,11 @@ class Player:
         self.rect = pygame.Rect(x, y, self.width, self.height)
         
         # Stats de combat ÉQUILIBRÉES CORRIGÉES
-        self.max_hp = 275
+        self.max_hp = 500
         self.hp = self.max_hp
         self.max_stamina = 50  # Gardé à 50
         self.stamina = self.max_stamina
-        self.attack_damage = 15  
+        self.attack_damage = 30  
         self.attack_range = 35  
         
         # Timers - Cooldowns différents selon l'arme
